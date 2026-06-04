@@ -1,5 +1,7 @@
 import argparse
+import os
 import time
+from pathlib import Path
 
 from roman_simulate_dr.scripts.logger import logger
 from roman_simulate_dr.scripts.utils import (
@@ -37,15 +39,34 @@ class RomanisimImages:
 
         Raises
         ------
-        ValueError
+        FileNotFoundError
             If obs_plan_filename or input_filename is not provided.
         """
-        if not obs_plan_filename:
-            raise ValueError("An observation plan filename must be provided.")
+        self.input_root = Path(os.getenv("RDR_INPUT_PATH", "."))
+        self.output_root = Path(os.getenv("RDR_OUTPUT_PATH", "."))
+
+        # Helper to resolve paths without doubling up directories
+        def resolve_input(fname):
+            p = Path(fname)
+            if p.exists():
+                return p
+            return self.input_root / fname
+
+        plan_path = resolve_input(obs_plan_filename)
+        # Crucial: Step 2 should check if the catalog exists in Input OR Output root
+        input_path = Path(input_filename)
+        if not input_path.exists():
+            input_path = (
+                self.output_root / input_filename
+            )  # Try output root (intermediate file)
+
+        if not plan_path.exists():
+            raise FileNotFoundError(f"Plan not found: {plan_path}")
         if not input_filename:
-            raise ValueError("An input catalog filename must be provided.")
-        self.plan = read_obs_plan(obs_plan_filename)
-        self.input_filename = input_filename
+            raise FileNotFoundError("An input catalog filename must be provided.")
+
+        self.plan = read_obs_plan(str(plan_path))
+        self.input_filename = str(input_path)
         self.max_workers = max_workers
         self.sca_ids = self._create_sca_id_list(sca_ids)
 
@@ -158,7 +179,7 @@ class RomanisimImages:
         ) in self.plan:
             for sca in self.sca_ids:
                 bandpass = bandpass.upper()
-                output_filename = generate_roman_filename(
+                base_filename = generate_roman_filename(
                     program=1,
                     plan=plan,
                     passno=int(pidx),
@@ -170,6 +191,7 @@ class RomanisimImages:
                     bandpass=bandpass,
                     suffix="uncal",
                 )
+                full_output_path = self.output_root / base_filename
                 jobs.append(
                     dict(
                         radec=(ra_ref, dec_ref),
@@ -178,7 +200,7 @@ class RomanisimImages:
                         roll=pa,
                         ma_table_number=ma_table_number,
                         catalog=self.input_filename,
-                        output_filename=output_filename,
+                        output_filename=str(full_output_path),
                     )
                 )
         parallelize_jobs(

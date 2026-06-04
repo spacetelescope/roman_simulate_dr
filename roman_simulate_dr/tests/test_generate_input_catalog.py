@@ -8,8 +8,14 @@ from roman_simulate_dr.scripts.generate_input_catalog import InputCatalog
 
 
 @pytest.fixture
-def mock_plan():
+def mock_plan(tmp_path):
     # Minimal plan with RA and DEC columns
+
+    # we create an empty plan file because read_obs_plan 
+    # expects a file path, but we mock its return value anyway
+    plan_file = tmp_path / "plan.ecsv"
+    plan_file.write_text("")
+
     return {"RA": [10.0, 20.0], "DEC": [30.0, 40.0]}
 
 
@@ -19,11 +25,14 @@ ROMAN_PHOTOZ_FLUX_PATH = (
 
 
 @patch("roman_simulate_dr.scripts.generate_input_catalog.read_obs_plan")
-def test_init_sets_attributes(mock_read_obs_plan, mock_plan):
+def test_init_sets_attributes(mock_read_obs_plan, mock_plan, tmp_path, monkeypatch):
     """
     Purpose: Verify that InputCatalog initializes its attributes correctly
     when provided with explicit arguments and a mocked observation plan.
     """
+
+    monkeypatch.setenv("RDR_INPUT_PATH", str(tmp_path))
+
     mock_read_obs_plan.return_value = mock_plan
     obj = InputCatalog(
         "plan.ecsv",
@@ -34,11 +43,11 @@ def test_init_sets_attributes(mock_read_obs_plan, mock_plan):
         flux_catalog_filename=ROMAN_PHOTOZ_FLUX_PATH,
     )
     assert obj.plan == mock_plan
-    assert obj.catalog_filename == "out.ecsv"
+    assert str(obj.catalog_filename) == "out.ecsv"
     assert obj.ra == 1.0
     assert obj.dec == 2.0
     assert obj.radius == 0.5
-    assert obj.flux_catalog_filename == ROMAN_PHOTOZ_FLUX_PATH
+    assert str(obj.flux_catalog_filename) == ROMAN_PHOTOZ_FLUX_PATH
 
 
 @patch("roman_simulate_dr.scripts.generate_input_catalog.vstack")
@@ -53,6 +62,8 @@ def test_generate_catalog_calls_components(
     mock_make_stars,
     mock_vstack,
     mock_plan,
+    tmp_path,
+    monkeypatch,
 ):
     """
     Purpose: Ensure that _generate_catalog calls all required component
@@ -60,6 +71,8 @@ def test_generate_catalog_calls_components(
     """
     import numpy as np
     from astropy.table import Table
+
+    monkeypatch.setenv("RDR_INPUT_PATH", str(tmp_path))
 
     mock_read_obs_plan.return_value = mock_plan
     mock_make_cosmos_galaxies.return_value = MagicMock()
@@ -80,12 +93,15 @@ def test_generate_catalog_calls_components(
 @patch.object(InputCatalog, "_generate_catalog")
 @patch("roman_simulate_dr.scripts.generate_input_catalog.read_obs_plan")
 def test_run_calls_generate_catalog(
-    mock_read_obs_plan, mock_generate_catalog, mock_plan
+    mock_read_obs_plan, mock_generate_catalog, mock_plan, tmp_path, monkeypatch
 ):
     """
     Purpose: Verify that the run() method of InputCatalog triggers
     _generate_catalog exactly once.
     """
+
+    monkeypatch.setenv("RDR_INPUT_PATH", str(tmp_path))
+
     mock_read_obs_plan.return_value = mock_plan
     obj = InputCatalog(
         "plan.ecsv",
@@ -100,13 +116,15 @@ def test_run_calls_generate_catalog(
 @patch("roman_simulate_dr.scripts.generate_input_catalog.logger")
 @patch("roman_simulate_dr.scripts.generate_input_catalog.read_obs_plan")
 def test_update_catalog_fluxes_success(
-    mock_read_obs_plan, mock_logger, mock_table, mock_plan
+    mock_read_obs_plan, mock_logger, mock_table, mock_plan, tmp_path, monkeypatch
 ):
     """
     Purpose: Test update_catalog_fluxes when everything succeeds.
     """
     import numpy as np
     from astropy.table import Table
+
+    monkeypatch.setenv("RDR_INPUT_PATH", str(tmp_path))
 
     mock_read_obs_plan.return_value = mock_plan
     obj = InputCatalog(
@@ -135,10 +153,13 @@ def test_update_catalog_fluxes_success(
 
 
 @patch("roman_simulate_dr.scripts.generate_input_catalog.read_obs_plan")
-def test_update_catalog_fluxes_no_flux_catalog(mock_read_obs_plan, mock_plan):
+def test_update_catalog_fluxes_no_flux_catalog(mock_read_obs_plan, mock_plan, tmp_path, monkeypatch):
     """
     Purpose: Test update_catalog_fluxes raises if no flux_catalog_filename is set.
     """
+
+    monkeypatch.setenv("RDR_INPUT_PATH", str(tmp_path))
+
     mock_read_obs_plan.return_value = mock_plan
     obj = InputCatalog("plan.ecsv", output_catalog_filename="out.ecsv")
     with pytest.raises(RuntimeError):

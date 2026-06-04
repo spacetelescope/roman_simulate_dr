@@ -2,33 +2,60 @@
 
 Roman Simulate Data Release
 
-This repository contains tools for simulating and processing data releases for the Nancy Grace Roman Space Telescope. It provides an end-to-end workflow: generating input catalogs with realistic source fluxes, simulating L1 images with [romanisim](https://github.com/spacetelescope/romanisim), processing them through the [romancal](https://github.com/spacetelescope/romancal) pipeline, and visualizing the results.
+This repository contains tools for simulating and processing data releases for
+the Nancy Grace Roman Space Telescope. It provides an end-to-end workflow:
+generating input catalogs with realistic source fluxes, simulating L1 images
+with [romanisim](https://github.com/spacetelescope/romanisim), processing them
+through the [romancal](https://github.com/spacetelescope/romancal) pipeline,
+and visualizing the results.
 
 ## Installation
 
 Clone this repository:
 
 ```shell
-git clone git@github.com:spacetelescope/roman_simulate_dr.git
+git clone https://github.com/mairanteodoro/roman_simulate_dr.git
+cd roman_simulate_dr
 ```
 
-Install the package (includes `romanisim`, `romancal`, and other dependencies):
+Install the package:
 
 ```shell
-pip install .
+python -m pip install .
 ```
 
 For development (includes test and doc dependencies):
 
 ```shell
-pip install -e ".[dev]"
+python -m pip install -e ".[dev]"
+```
+
+## Runtime Paths (Optional)
+
+The workflows can use two optional environment variables:
+
+- `RDR_INPUT_PATH` (default: current directory)
+- `RDR_OUTPUT_PATH` (default: current directory)
+
+These are not required if your input and output files are in the current
+working directory.
+
+Set them if you want to specify different directories for input and output
+files. For example:
+
+```shell
+export RDR_INPUT_PATH=$PWD/INPUT
+export RDR_OUTPUT_PATH=$PWD/OUTPUT
 ```
 
 ## Quick Start
 
 ### 1. Generate the Input Catalog
 
-Generate a [romanisim](https://github.com/spacetelescope/romanisim) input catalog containing COSMOS galaxies, Gaia stars, and additional random stellar sources:
+Use an observation plan file to generate a
+[romanisim](https://github.com/spacetelescope/romanisim)
+input catalog containing COSMOS galaxies, Gaia stars, and additional random
+stellar sources:
 
 ```shell
 rdr-generate-input-catalog \
@@ -36,7 +63,9 @@ rdr-generate-input-catalog \
   --output-filename romanisim_input_catalog.parquet
 ```
 
-Optionally, supply a flux catalog produced by [roman_photoz](https://github.com/spacetelescope/roman_photoz) to update the source fluxes with more realistic SEDs:
+Optionally, supply a flux catalog produced by
+[roman_photoz](https://github.com/spacetelescope/roman_photoz) to update the
+source fluxes with more realistic SEDs:
 
 ```shell
 rdr-generate-input-catalog \
@@ -46,46 +75,68 @@ rdr-generate-input-catalog \
   --filter-list f062 f087 f106 f129 f146 f158 f184 f213
 ```
 
-### 2. Simulate L1 Images
-
-Generate L1 simulated images using `romanisim`:
+### 2. Run Simulation Wrapper (Catalog + L1 + Report)
 
 ```shell
-rdr-generate-simulated-images \
-  --obs-plan obs_plan.ecsv \
-  --input-filename romanisim_input_catalog.parquet
+rdr-simulate-data obs_plan.ecsv
 ```
 
-### 3. End-to-End Pipeline (optional)
+This command wraps `rdr_simulate_data.sh` and writes run logs plus summary
+reports to `RDR_OUTPUT_PATH` (or the current directory when unset).
 
-For running the full simulation and data-processing pipeline, shell scripts are provided in `roman_simulate_dr/scripts/`:
+### 3. Run Processing Wrapper (L1 to L3)
 
-- **`rdr_simulate_data.sh`** — Generates the input catalog and simulates L1 images.
-- **`rdr_process_data.sh`** — Runs the calibration pipeline (`roman_elp`), creates skycell associations, produces coadds (`roman_mos`), and generates multiband catalogs.
+```shell
+rdr-process-data .
+```
+
+This command wraps `rdr_process_data.sh` (`roman_elp`, skycell associations,
+`roman_mos`, multiband association, and multiband catalog generation).
 
 ### 4. Visualization
 
-Create mosaics from L2 or L3 ASDF files:
+Create mosaics from L2 or L3 ASDF files using `rdr-generate-mosaic`:
 
 ```shell
-rdr-generate-mosaic \
-  --files r00001_*_f062_coadd.asdf \
-  --output l3_mosaic_f062
+rdr-generate-mosaic r00001_*_f062_coadd.asdf --output l3_mosaic_f062
 ```
 
-Additional plotting utilities are available in `roman_simulate_dr/scripts/plot_utils/` for photometry comparisons, photo-z vs. true-z diagnostics, and outlier analysis.
+Additional plotting utilities are available in
+`roman_simulate_dr/scripts/plot_utils/` for photometry comparisons,
+photo-z vs. true-z diagnostics, and outlier analysis.
+
+## Direct Module Execution (Advanced)
+
+If you want only the L1 generation step (outside the wrapper), run:
+
+```shell
+python -m roman_simulate_dr.scripts.generate_simulated_l1_images \
+  --obs-plan obs_plan.ecsv \
+  --input-filename romanisim_input_catalog.parquet \
+  --sca-ids 1 2 10 11 \
+  --max-workers 3
+```
 
 ## CLI Reference
 
-| Command | Description |
-| --- | --- |
-| `rdr-generate-input-catalog` | Generate a romanisim input catalog from an observation plan |
-| `rdr-generate-simulated-images` | Simulate L1 images using romanisim |
-| `rdr-generate-mosaic` | Create a mosaic from L2/L3 ASDF files |
+| Command                      | Description                                                 |
+| ---------------------------- | ----------------------------------------------------------- |
+| `rdr-generate-input-catalog` | Generate a Romanisim input catalog from an observation plan |
+| `rdr-simulate-data`          | Run the simulation wrapper (`rdr_simulate_data.sh`)         |
+| `rdr-process-data`           | Run the processing wrapper (`rdr_process_data.sh`)          |
+| `rdr-generate-mosaic`        | Create a mosaic PNG from ASDF files                         |
+
+## Testing
+
+```shell
+pytest roman_simulate_dr/tests
+```
 
 ## Observation Plan File
 
-The observation plan file must follow the format produced by the Astronomer's Proposal Tool (APT), generated by exporting a program as "Simulator input." The file contains the following columns:
+The observation plan file must follow the format produced by the Astronomer's
+Proposal Tool (APT), generated by exporting a program as "Simulator input."
+The file contains the following columns:
 
 ```
 RA          (float64)  — Right Ascension in degrees
@@ -102,4 +153,6 @@ VISIT       (int64)
 EXPOSURE    (int64)
 ```
 
-An example observation plan with two passes (PA=0° and PA=90°), two visits each (offset by 90″), and eight filters per exposure is included at `roman_simulate_dr/scripts/obs_plan.ecsv`.
+An example observation plan for two passes (PA=0° and PA=90°) with two visits
+each (offset by 90″) and eight filters per exposure is included at
+`roman_simulate_dr/scripts/obs_plan.ecsv`.

@@ -1,18 +1,26 @@
 """
-assess_results.py
+plot_zphot_vs_ztrue.py
 
 A command-line tool for matching photometric catalogs to a truth catalog,
 selecting outliers, and generating diagnostic plots for roman-photoz.
 
 Usage:
     # With shell expansion (recommended)
-    python -m assess_results r00001_r0_full_*y[0-9][0-9]_cat.parquet
+    python -m \
+      roman_simulate_dr.scripts.plot_utils.plot_zphot_vs_ztrue \
+      r00001_r0_full_*y[0-9][0-9]_cat.parquet \
+      --ref-cat romanisim_input_catalog.parquet 
 
     # Or with explicit file listing
-    python -m assess_results cat_filename_1.parquet cat_filename_2.parquet ...
+    python -m \
+      roman_simulate_dr.scripts.plot_utils.plot_zphot_vs_ztrue \
+      cat_filename_1.parquet cat_filename_2.parquet ... \
+      --ref-cat romanisim_input_catalog.parquet 
 
 Arguments:
     cat_files: List of catalog files to process (use shell expansion for multiple files).
+    --ref-cat: Reference catalog file (truth catalog) for matching (this is the input
+                 file used in the romanisim simulation step).
 
 Outputs:
     - matched_results.txt: Table of matched sources.
@@ -243,11 +251,11 @@ def plot_individual_seds(
         plt.close()
 
 
-def plot_results(save_path=None, catalog_filename="romanisim_input_catalog.parquet"):
+def plot_results(save_path=None, ref_cat_filename="romanisim_input_catalog.parquet"):
     rng = np.random.default_rng(42)  # For reproducibility of random selections
 
     results = Table.read("matched_results.txt", format="ascii.fixed_width_two_line")
-    cat_full = Table.read(catalog_filename, format="parquet")
+    cat_full = Table.read(ref_cat_filename, format="parquet")
 
     # 1. Initial Processing
     min_sep = 0.1
@@ -400,10 +408,10 @@ def plot_results(save_path=None, catalog_filename="romanisim_input_catalog.parqu
 
 
 def plot_magnitude_histograms(
-    catalog_filename="romanisim_input_catalog.parquet",
+    ref_cat_filename="romanisim_input_catalog.parquet",
     save_path=None,
 ):
-    cat = Table.read(catalog_filename, format="parquet")
+    cat = Table.read(ref_cat_filename, format="parquet")
     flux_cols = [col for col in cat.colnames if col.startswith("F")]
     ncols = 2
     nrows = (len(flux_cols) + 1) // ncols
@@ -427,13 +435,13 @@ def plot_magnitude_histograms(
         plt.show()
 
 
-def run_matching(catalog_list):
+def run_matching(catalog_list, ref_cat_filename="romanisim_input_catalog.parquet"):
     # 1. Load Target Data (Photometric Catalog)
     target_tables = [Table.read(f, format="parquet") for f in catalog_list]
     all_targets = vstack(target_tables)
 
     # 2. Load Input Catalog (Truth Catalog)
-    catalog_table = Table.read("romanisim_input_catalog.parquet", format="parquet")
+    catalog_table = Table.read(ref_cat_filename, format="parquet")
 
     # Pre-filter catalog for valid entries
     valid = (
@@ -507,6 +515,12 @@ def main():
         nargs="+",
         help="List of catalog files (use shell expansion, e.g. r00001_r0_full_*y[0-9][0-9]_cat.parquet)",
     )
+    parser.add_argument(
+        "--ref-cat",
+        required=True,
+        help="Reference catalog file (truth catalog) for matching (e.g. romanisim_input_catalog.parquet)",
+        default="romanisim_input_catalog.parquet",
+    )
     args = parser.parse_args()
 
     soi_filename = "soi.txt"
@@ -518,10 +532,12 @@ def main():
         print(f"No files matched the pattern: {args.pattern}", file=sys.stderr)
         sys.exit(1)
 
-    run_matching(cat_files)
+    run_matching(cat_files, ref_cat_filename=args.ref_cat)
     select_soi_by_standard_threshold(min_sep=0.1, soi_filename=soi_filename)
-    plot_results(save_path="photoz_vs_truez.png")
-    plot_magnitude_histograms(save_path="magnitude_histograms.png")
+    plot_results(save_path="photoz_vs_truez.png", ref_cat_filename=args.ref_cat)
+    plot_magnitude_histograms(
+        save_path="magnitude_histograms.png", ref_cat_filename=args.ref_cat
+    )
 
 
 if __name__ == "__main__":

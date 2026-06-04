@@ -1,6 +1,6 @@
 import logging
-import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from pathlib import Path
 
 from astropy.table import Table
 
@@ -121,5 +121,5 @@ def generate_catalog_name(obs_plan_filename: str) -> str:
     str
         The derived catalog filename.
     """
-    base, ext = os.path.splitext(obs_plan_filename)
-    return f"{base}_cat{ext}"
+    path = Path(obs_plan_filename)
+    return str(path.with_name(path.stem + "_cat" + path.suffix))

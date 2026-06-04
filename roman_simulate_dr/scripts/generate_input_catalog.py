@@ -1,5 +1,7 @@
 import argparse
 import gc
+import os
+from pathlib import Path
 
 import numpy as np
 from astropy.coordinates import SkyCoord
@@ -49,11 +51,45 @@ class InputCatalog:
             Path to a flux_catalog file previously produced by roman_photoz (e.g. parquet).
             If provided, the generated catalog will be updated using this flux catalog.
         """
-        self.plan = read_obs_plan(obs_plan_filename)
-        if output_catalog_filename is not None:
-            self.catalog_filename = output_catalog_filename
+        self.input_root = Path(os.getenv("RDR_INPUT_PATH", "."))
+        self.output_root = Path(os.getenv("RDR_OUTPUT_PATH", "."))
+
+        def resolve_path(fname, root, must_exist=False):
+            if not fname:
+                return None
+            p = Path(fname)
+            # If path is already absolute or exists relative to CWD, use it
+            if p.exists():
+                return p
+            # Otherwise, check the designated root
+            resolved = root / fname
+            if must_exist and not resolved.exists():
+                raise FileNotFoundError(
+                    f"Required file not found: {resolved.absolute()}"
+                )
+            return resolved
+
+        # Resolve Plan (Input)
+        plan_path = resolve_path(obs_plan_filename, self.input_root, must_exist=True)
+        self.plan = read_obs_plan(str(plan_path))
+
+        # Resolve Flux Catalog (Input; externally-provided flux catalog file produced by roman_photoz)
+        self.flux_catalog_filename = resolve_path(
+            flux_catalog_filename, self.input_root
+        )
+
+        # Resolve Output Catalog
+        if output_catalog_filename:
+            # If the user provided a full path (like DATASET/OUTPUT/file.parquet), use it.
+            # Otherwise, join the filename with our output root.
+            out_p = Path(output_catalog_filename)
+            self.catalog_filename = (
+                out_p if out_p.parent != Path(".") else self.output_root / out_p
+            )
         else:
-            self.catalog_filename = generate_catalog_name(obs_plan_filename)
+            self.catalog_filename = self.output_root / generate_catalog_name(
+                str(plan_path)
+            )
 
         # set reference coordinates and radius to simulate
         self.ra = ra if ra is not None else float(np.mean(np.array(self.plan["RA"])))
@@ -61,9 +97,6 @@ class InputCatalog:
             dec if dec is not None else float(np.mean(np.array(self.plan["DEC"])))
         )
         self.radius = radius if radius is not None else 0.3
-
-        # new: externally-provided flux catalog file (produced by roman_photoz)
-        self.flux_catalog_filename = flux_catalog_filename
 
     def _generate_catalog(self, filter_list=None):
         """

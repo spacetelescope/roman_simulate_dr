@@ -6,13 +6,22 @@ from roman_simulate_dr.scripts.generate_simulated_l1_images import RomanisimImag
 
 
 @pytest.fixture
-def mock_plan():
+def mock_plan(tmp_path):
     # Minimal observation plan tuple structure
+
+    # we create an empty plan file because read_obs_plan
+    # expects a file path, but we mock its return value anyway
+    plan_file = tmp_path / "plan.ecsv"
+    plan_file.write_text("")
+
     return [(270.0, 66.0, 0.0, "F062", 109, 100, 1, 1, 1, 1, 1, 1)]
 
 
 @patch("roman_simulate_dr.scripts.generate_simulated_l1_images.read_obs_plan")
-def test_init_sets_attributes(mock_read_obs_plan, mock_plan):
+def test_init_sets_attributes(mock_read_obs_plan, mock_plan, tmp_path, monkeypatch):
+
+    monkeypatch.setenv("RDR_INPUT_PATH", str(tmp_path))
+
     mock_read_obs_plan.return_value = mock_plan
     obj = RomanisimImages("plan.ecsv", "input.ecsv", max_workers=2, sca_ids=[1, 2])
     assert obj.plan == mock_plan
@@ -23,7 +32,12 @@ def test_init_sets_attributes(mock_read_obs_plan, mock_plan):
 
 @patch("roman_simulate_dr.scripts.generate_simulated_l1_images.read_obs_plan")
 @patch("subprocess.run")
-def test_generate_simulated_images_runs_subprocess(mock_run, mock_read_obs_plan):
+def test_generate_simulated_images_runs_subprocess(
+    mock_run, mock_read_obs_plan, mock_plan, tmp_path, monkeypatch
+):
+
+    monkeypatch.setenv("RDR_INPUT_PATH", str(tmp_path))
+
     mock_read_obs_plan.return_value = [
         (270.0, 66.0, 0.0, "F062", 109, 100, 1, 1, 1, 1, 1, 1)
     ]
@@ -40,8 +54,11 @@ def test_generate_simulated_images_runs_subprocess(mock_run, mock_read_obs_plan)
 @patch("roman_simulate_dr.scripts.generate_simulated_l1_images.parallelize_jobs")
 @patch("roman_simulate_dr.scripts.generate_simulated_l1_images.read_obs_plan")
 def test_run_calls_parallelize_jobs(
-    mock_read_obs_plan, mock_parallelize_jobs, mock_plan
+    mock_read_obs_plan, mock_parallelize_jobs, mock_plan, tmp_path, monkeypatch
 ):
+
+    monkeypatch.setenv("RDR_INPUT_PATH", str(tmp_path))
+
     mock_read_obs_plan.return_value = mock_plan
     obj = RomanisimImages("plan.ecsv", "input.ecsv", max_workers=2, sca_ids=[1])
     obj.run()
